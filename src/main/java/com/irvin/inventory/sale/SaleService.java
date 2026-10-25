@@ -30,6 +30,7 @@ import com.irvin.inventory.security.CurrentUser;
 import com.irvin.inventory.stock.InventoryMovementRepository;
 import com.irvin.inventory.user.UserRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -68,6 +69,7 @@ public class SaleService {
     private final InventoryMovementRepository inventoryMovementRepository;
     private final IdempotencyLock idempotencyLock;
     private final CashDrawerService cashDrawerService;
+    private final ApplicationEventPublisher eventPublisher;
     private final Clock clock;
 
     public record CreateResult(SaleResponse sale, boolean created) {
@@ -155,6 +157,8 @@ public class SaleService {
                 .sorted(Comparator.comparing(item -> item.getProduct().getId()))
                 .forEach(item -> inventoryMovementRepository.recordSaleCancellation(
                         item.getProduct().getId(), item.getQuantity(), id, userId));
+        eventPublisher.publishEvent(new SaleCancelledEvent(id, sale.getSaleNumber(), sellerId, userId,
+                sale.getTotal(), request.reason()));
         return SaleResponse.from(sale);
     }
 
