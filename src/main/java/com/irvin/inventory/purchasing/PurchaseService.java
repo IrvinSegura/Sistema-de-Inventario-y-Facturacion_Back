@@ -27,6 +27,7 @@ import com.irvin.inventory.purchasing.dto.PurchaseSummaryResponse;
 import com.irvin.inventory.stock.InventoryMovementRepository;
 import com.irvin.inventory.user.UserRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -59,6 +60,7 @@ public class PurchaseService {
     private final UserRepository userRepository;
     private final InventoryMovementRepository inventoryMovementRepository;
     private final IdempotencyLock idempotencyLock;
+    private final ApplicationEventPublisher eventPublisher;
     private final Clock clock;
 
     public record CreateResult(PurchaseResponse purchase, boolean created) {
@@ -144,6 +146,8 @@ public class PurchaseService {
                                 item.getUnitCost(), id, userId)
                         .orElseThrow(() -> new ConflictException(
                                 "Insufficient stock for product: " + item.getProduct().getId())));
+        eventPublisher.publishEvent(new PurchaseCancelledEvent(id, purchase.getSupplier().getName(), userId,
+                purchase.getTotal(), request.reason()));
         return PurchaseResponse.from(purchase);
     }
 

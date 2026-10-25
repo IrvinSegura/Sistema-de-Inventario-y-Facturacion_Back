@@ -1,5 +1,6 @@
 package com.irvin.inventory.user;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -15,6 +16,9 @@ public interface UserRepository extends JpaRepository<User, Long> {
     boolean existsByEmail(String email);
 
     boolean existsByRole(Role role);
+
+    @Query("select u.id from User u where u.active = true and u.role in :roles")
+    List<Long> findActiveIdsByRoleIn(Collection<Role> roles);
 
     // Sellers now, and anyone who sold before a role change: their sales and drawers stay filterable.
     // Each EXISTS stops at the first sale through ix_sale_user_date.

@@ -149,12 +149,12 @@ public class UserService {
         }
         if (emailChanges) {
             accountEvents.record(id, adminId, AccountEventType.EMAIL_CHANGED, oldEmail, request.email());
-            eventPublisher.publishEvent(new AccountChangedEvent(Kind.EMAIL_CHANGED, request.name(), oldEmail,
-                    request.email()));
+            eventPublisher.publishEvent(new AccountChangedEvent(Kind.EMAIL_CHANGED, id, adminId, request.name(),
+                    oldEmail, request.email()));
         }
         if (phoneChanges) {
             accountEvents.record(id, adminId, AccountEventType.PHONE_CHANGED, oldPhone, request.phone());
-            eventPublisher.publishEvent(new AccountChangedEvent(Kind.PHONE_CHANGED, request.name(),
+            eventPublisher.publishEvent(new AccountChangedEvent(Kind.PHONE_CHANGED, id, adminId, request.name(),
                     user.getEmail(), request.phone()));
         }
         return UserResponse.from(user);
@@ -186,7 +186,7 @@ public class UserService {
         String email = user.getEmail();
         replacePassword(user, request.temporaryPassword(), true);
         accountEvents.record(id, adminId, AccountEventType.PASSWORD_RESET, null, null);
-        eventPublisher.publishEvent(new AccountChangedEvent(Kind.PASSWORD_RESET, name, email, null));
+        eventPublisher.publishEvent(new AccountChangedEvent(Kind.PASSWORD_RESET, id, adminId, name, email, null));
     }
 
     // Whoever knew the old password, or got a reset code for it, loses access at once: refresh tokens
