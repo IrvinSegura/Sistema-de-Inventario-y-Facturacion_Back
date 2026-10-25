@@ -29,6 +29,7 @@ import com.irvin.inventory.user.Role;
 import com.irvin.inventory.user.User;
 import com.irvin.inventory.user.UserRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -62,6 +63,7 @@ public class CashDrawerService {
     private final SaleRepository saleRepository;
     private final UserRepository userRepository;
     private final StoreProperties storeProperties;
+    private final ApplicationEventPublisher eventPublisher;
     private final Clock clock;
 
     // The seller's personal drawer for today in the store's time zone: they are its only member.
@@ -119,13 +121,16 @@ public class CashDrawerService {
                             ? name + " is already in an open cash drawer"
                             : name + " must close the cash drawer of " + taken.getBusinessDate() + " first");
         });
-        return save(CashDrawer.open(
+        CashDrawerResponse drawer = save(CashDrawer.open(
                 userRepository.getReferenceById(managerId),
                 users.get(request.responsibleId()),
                 memberIds.stream().map(users::get).toList(),
                 today,
                 request.openingFloat().setScale(MONEY_SCALE),
                 now));
+        eventPublisher.publishEvent(new CashDrawerAssignedEvent(drawer.id(), memberIds,
+                users.get(request.responsibleId()).getName(), managerId, drawer.openingFloat()));
+        return drawer;
     }
 
     // Part of the sale transaction: the drawer the seller is in on the sale's local day must be open.
@@ -172,6 +177,8 @@ public class CashDrawerService {
                 drawer.getOpeningFloat().add(saleRepository.drawerNetCash(id)).setScale(MONEY_SCALE),
                 request.countedCash().setScale(MONEY_SCALE),
                 request.note());
+        eventPublisher.publishEvent(new CashDrawerClosedEvent(id, responsibleId, actor.id(), drawer.getBusinessDate(),
+                drawer.getCountedCash().subtract(drawer.getExpectedCash())));
         return CashDrawerResponse.from(drawer);
     }
 
