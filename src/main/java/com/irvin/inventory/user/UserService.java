@@ -70,6 +70,11 @@ public class UserService {
         User saved = saveCheckingEmail(user);
         accountEvents.record(saved.getId(), adminId == null ? saved.getId() : adminId, AccountEventType.CREATED,
                 null, null);
+        // The initial admin set up their own account from the configuration: nobody to welcome.
+        if (adminId != null) {
+            eventPublisher.publishEvent(new AccountChangedEvent(Kind.ACCOUNT_CREATED, saved.getId(), adminId,
+                    saved.getName(), saved.getEmail(), saved.getRole().name()));
+        }
         return UserResponse.from(saved);
     }
 
@@ -142,10 +147,14 @@ public class UserService {
 
         if (oldRole != request.role()) {
             accountEvents.record(id, adminId, AccountEventType.ROLE_CHANGED, oldRole.name(), request.role().name());
+            eventPublisher.publishEvent(new AccountChangedEvent(Kind.ROLE_CHANGED, id, adminId, request.name(),
+                    user.getEmail(), request.role().name()));
         }
         if (wasActive != request.active()) {
             accountEvents.record(id, adminId,
                     request.active() ? AccountEventType.REACTIVATED : AccountEventType.DEACTIVATED, null, null);
+            eventPublisher.publishEvent(new AccountChangedEvent(request.active() ? Kind.REACTIVATED : Kind.DEACTIVATED,
+                    id, adminId, request.name(), user.getEmail(), null));
         }
         if (emailChanges) {
             accountEvents.record(id, adminId, AccountEventType.EMAIL_CHANGED, oldEmail, request.email());
@@ -173,6 +182,8 @@ public class UserService {
         String replaced = user.isPasswordChangeRequired() ? REPLACED_TEMPORARY : null;
         replacePassword(user, request.newPassword(), false);
         accountEvents.record(userId, userId, AccountEventType.PASSWORD_CHANGED, replaced, null);
+        eventPublisher.publishEvent(new AccountChangedEvent(Kind.PASSWORD_CHANGED, userId, userId, user.getName(),
+                user.getEmail(), null));
     }
 
     // The admin's own account goes through changePassword, which asks for the current one.

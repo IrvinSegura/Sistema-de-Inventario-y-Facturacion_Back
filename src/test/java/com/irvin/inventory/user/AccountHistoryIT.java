@@ -8,6 +8,7 @@ import java.util.UUID;
 
 import com.irvin.inventory.AbstractIntegrationTest;
 import com.irvin.inventory.auth.RecordingPasswordResetSender;
+import com.irvin.inventory.common.email.EmailMessage;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 
@@ -71,27 +72,62 @@ class AccountHistoryIT extends AbstractIntegrationTest {
         getJson("/api/v1/users/999999/events", adminAccessToken()).andExpect(status().isNotFound());
     }
 
+    // Created by an admin, so welcomed; the welcome is read here and the tests below start after it.
+    private CreatedUser welcomedSeller() throws Exception {
+        CreatedUser seller = createSeller();
+        EmailMessage welcome = notices.next(seller.email());
+        assertThat(welcome.subject()).isEqualTo("Tu cuenta en Inventario y Facturación está lista");
+        assertThat(welcome.body()).contains("Rol: Vendedor").doesNotContain(DEFAULT_PASSWORD);
+        return seller;
+    }
+
     @Test
     void theOldAddressIsToldWhenTheEmailChanges() throws Exception {
         String token = adminAccessToken();
-        CreatedUser seller = createSeller();
+        CreatedUser seller = welcomedSeller();
         String newEmail = "notice-" + UUID.randomUUID() + "@test.com";
 
         update(seller.id(), newEmail, "SELLER", true, token);
 
-        AccountNotice notice = notices.next(seller.email());
+        EmailMessage notice = notices.next(seller.email());
         // Masked: the old address may be the compromised one.
         assertThat(notice.body()).contains("n***@test.com").doesNotContain(newEmail);
         assertThat(notices.nothingSentTo(newEmail)).isTrue();
-        // Other changes send nothing.
+        // Later changes go to the new address.
         update(seller.id(), null, "SELLER", false, token);
-        assertThat(notices.nothingSentTo(newEmail)).isTrue();
+        assertThat(notices.next(newEmail).subject()).isEqualTo("Se desactivó tu cuenta");
+        assertThat(notices.nothingSentTo(seller.email())).isTrue();
+    }
+
+    @Test
+    void roleAndStatusChangesAreToldToTheOwner() throws Exception {
+        String token = adminAccessToken();
+        CreatedUser seller = welcomedSeller();
+
+        update(seller.id(), null, "SUPERVISOR", true, token);
+        assertThat(notices.next(seller.email()).body()).contains("Rol nuevo: Supervisor");
+        update(seller.id(), null, "SUPERVISOR", false, token);
+        assertThat(notices.next(seller.email()).subject()).isEqualTo("Se desactivó tu cuenta");
+        update(seller.id(), null, "SUPERVISOR", true, token);
+        assertThat(notices.next(seller.email()).subject()).isEqualTo("Se reactivó tu cuenta");
+    }
+
+    @Test
+    void theOwnersOwnPasswordChangeIsToldToThem() throws Exception {
+        CreatedUser seller = welcomedSeller();
+        String sellerToken = loginOk(seller.email(), DEFAULT_PASSWORD).accessToken();
+
+        putJson("/api/v1/users/me/password", """
+                {"currentPassword": "%s", "newPassword": "brand-new-pass-1"}
+                """.formatted(DEFAULT_PASSWORD), sellerToken).andExpect(status().isNoContent());
+
+        assertThat(notices.next(seller.email()).subject()).isEqualTo("Cambió tu contraseña");
     }
 
     @Test
     void aPhoneChangeIsRecordedToldAndEndsSmsCodes() throws Exception {
         String token = adminAccessToken();
-        CreatedUser seller = createSeller();
+        CreatedUser seller = welcomedSeller();
         setPhone(seller.id(), "+525500000001", token);
         notices.next(seller.email());
         postJson("/api/v1/auth/password-reset/code", """
@@ -112,6 +148,20 @@ class AccountHistoryIT extends AbstractIntegrationTest {
                 """.formatted(seller.email(), smsCode)).andExpect(status().isBadRequest());
     }
 
+    @Test
+    void removingThePhoneIsToldToTheUser() throws Exception {
+        String token = adminAccessToken();
+        CreatedUser seller = welcomedSeller();
+        setPhone(seller.id(), "+525500000001", token);
+        notices.next(seller.email());
+
+        putJson("/api/v1/users/" + seller.id(), """
+                {"name": "Test User", "role": "SELLER", "active": true}
+                """, token).andExpect(status().isOk());
+
+        assertThat(notices.next(seller.email()).subject()).isEqualTo("Se quitó el celular de tu cuenta");
+    }
+
     private void setPhone(Long id, String phone, String token) throws Exception {
         putJson("/api/v1/users/" + id, """
                 {"name": "Test User", "role": "SELLER", "active": true, "phone": "%s"}
@@ -121,7 +171,7 @@ class AccountHistoryIT extends AbstractIntegrationTest {
     @Test
     void aPasswordResetIsToldToTheUserAndItsReplacementMarked() throws Exception {
         String token = adminAccessToken();
-        CreatedUser seller = createSeller();
+        CreatedUser seller = welcomedSeller();
 
         putJson("/api/v1/users/" + seller.id() + "/password", """
                 {"temporaryPassword": "temporary-pass-1"}
@@ -153,7 +203,7 @@ class AccountHistoryIT extends AbstractIntegrationTest {
     @Test
     void aRejectedEmailChangeSendsNoNotice() throws Exception {
         String token = adminAccessToken();
-        CreatedUser seller = createSeller();
+        CreatedUser seller = welcomedSeller();
         CreatedUser other = createSeller();
 
         putJson("/api/v1/users/" + seller.id(), """
