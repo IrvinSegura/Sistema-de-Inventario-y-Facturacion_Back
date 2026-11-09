@@ -37,15 +37,16 @@ public class NotificationService {
         save(recipientIds, actorId, type, content, createdAt);
     }
 
-    // Every active admin and supervisor but the actor. One demoted meanwhile may still get it, but
-    // never reads it: findForUser filters by the reader's current role.
+    // Every active admin and supervisor but the actor, whom it returns. One demoted meanwhile may still
+    // get it, but never reads it: findForUser filters by the reader's current role.
     @Transactional
-    public void notifyManagers(Long actorId, NotificationType type, NotificationContent content,
+    public List<Long> notifyManagers(Long actorId, NotificationType type, NotificationContent content,
             Instant createdAt) {
         List<Long> recipients = userRepository.findActiveIdsByRoleIn(Role.MANAGERS).stream()
                 .filter(id -> !id.equals(actorId))
                 .toList();
         save(recipients, actorId, type, content, createdAt);
+        return recipients;
     }
 
     // Always newest first: a client sort would break the list's order (or name a missing field).
