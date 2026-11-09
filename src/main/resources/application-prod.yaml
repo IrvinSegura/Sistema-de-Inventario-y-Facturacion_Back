@@ -22,6 +22,9 @@ app:
   password-reset:
     # Reset codes are secrets: never in production logs.
     log-codes: false
+  email:
+    # The deployed web client; without it, emails go out with no button.
+    app-url: ${EMAIL_APP_URL:}
   images:
     local:
       # Render's disk is wiped on every deploy: without Cloudinary, uploads answer 503.
