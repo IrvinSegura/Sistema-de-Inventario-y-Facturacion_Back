@@ -41,7 +41,7 @@ spring:
       # Product images; larger uploads get 413 before reaching the controller.
       max-file-size: 5MB
       max-request-size: 6MB
-  # SMTP for password reset emails; without a host, codes aren't emailed (see app.password-reset).
+  # SMTP for password reset codes and account notices; without a host, neither is emailed (see app.email).
   mail:
     host: ${MAIL_HOST:}
     port: ${MAIL_PORT:587}
@@ -86,7 +86,10 @@ app:
     max-codes-per-hour: 5
     # Local development: with no email/SMS provider, codes go to the log. Off in production.
     log-codes: true
-    mail-from: ${MAIL_FROM:}
+  email:
+    from: ${MAIL_FROM:}
+    # The web client, for the buttons in the emails; the Vite dev server by default.
+    app-url: ${EMAIL_APP_URL:http://localhost:5173}
   # Per client address (in memory, one instance): a burst of `capacity`, then one request per
   # `refill-period`. Independent of the per-account password reset limits above.
   rate-limit:

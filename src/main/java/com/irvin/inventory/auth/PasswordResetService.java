@@ -11,10 +11,12 @@ import java.util.Locale;
 import com.irvin.inventory.auth.dto.PasswordResetCodeRequest;
 import com.irvin.inventory.auth.dto.ResetPasswordRequest;
 import com.irvin.inventory.common.exception.BadRequestException;
+import com.irvin.inventory.user.AccountChangedEvent;
 import com.irvin.inventory.user.AccountEventRecorder;
 import com.irvin.inventory.user.AccountEventType;
 import com.irvin.inventory.user.User;
 import com.irvin.inventory.user.UserRepository;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -43,11 +45,12 @@ public class PasswordResetService {
     private final Clock clock;
     private final TransactionTemplate transactionTemplate;
     private final AccountEventRecorder accountEvents;
+    private final ApplicationEventPublisher eventPublisher;
 
     public PasswordResetService(UserRepository userRepository, PasswordResetCodeRepository codeRepository,
             AuthService authService, PasswordResetDispatcher dispatcher, PasswordEncoder passwordEncoder,
             PasswordResetProperties properties, Clock clock, TransactionTemplate transactionTemplate,
-            AccountEventRecorder accountEvents) {
+            AccountEventRecorder accountEvents, ApplicationEventPublisher eventPublisher) {
         this.userRepository = userRepository;
         this.codeRepository = codeRepository;
         this.authService = authService;
@@ -57,6 +60,7 @@ public class PasswordResetService {
         this.clock = clock;
         this.transactionTemplate = transactionTemplate;
         this.accountEvents = accountEvents;
+        this.eventPublisher = eventPublisher;
     }
 
     // Silently does nothing for unknown or inactive accounts, SMS without a phone, or when the
@@ -153,6 +157,9 @@ public class PasswordResetService {
         user.setPasswordChangeRequired(false);
         user.invalidateIssuedTokens();
         accountEvents.record(userId, userId, AccountEventType.PASSWORD_RECOVERED, null, null);
+        // Sent after commit, so a failed reset tells no one.
+        eventPublisher.publishEvent(new AccountChangedEvent(AccountChangedEvent.Kind.PASSWORD_RECOVERED, userId,
+                userId, user.getName(), user.getEmail(), null));
         // Whoever knew the old password loses their sessions.
         authService.revokeAllSessions(userId);
         return true;

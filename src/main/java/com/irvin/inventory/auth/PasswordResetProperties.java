@@ -16,6 +16,5 @@ public record PasswordResetProperties(
         @Positive int maxAttempts,
         @NotNull Duration resendCooldown,
         @Positive int maxCodesPerHour,
-        boolean logCodes,
-        String mailFrom) {
+        boolean logCodes) {
 }

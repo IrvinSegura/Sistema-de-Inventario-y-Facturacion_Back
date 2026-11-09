@@ -33,6 +33,14 @@ Contenido: [Características](#características) · [Capturas de pantalla](#capt
   ventas por cliente registrado y un resumen de compras (proveedores, productos más comprados, desglose diario).
 - Costo de lo vendido: cada compra actualiza el costo promedio ponderado del producto, y cada línea de venta
   conserva el costo que tenía al venderse.
+- Avisos en la app: al vendedor cuando cancelan una de sus ventas o le asignan o cierran una caja, a los demás
+  gerentes cuando se cancela una compra, y al dueño de la cuenta cuando un administrador le cambia el correo o el
+  celular o le restablece la contraseña.
+- Correos con diseño propio y versión en texto plano: bienvenida al crear la cuenta (sin la contraseña), cambios de
+  correo, celular, rol y estado (desactivada o reactivada), contraseña cambiada o recuperada, el código para
+  restablecerla (en el idioma de quien lo pide) y una copia de los avisos de ventas, compras y cajas con su importe.
+  Sin SMTP configurado no sale ningún correo y los avisos se quedan solo en la app. `EmailTemplatesTest` deja una
+  vista previa de cada correo en `target/email-previews`.
 
 Diseño de la base de datos: [docs/data-model.md](docs/data-model.md).
 
@@ -145,7 +153,8 @@ los límites.
 | `JWT_SECRET` | Base64, al menos 32 bytes (`openssl rand -base64 32`) |
 | `JWT_MAX_SESSION_AGE` | Cuánto dura una sesión desde el inicio de sesión, sin importar cuántas veces se renueve (por defecto `7d`; p. ej. `12h`) |
 | `ADMIN_EMAIL` / `ADMIN_PASSWORD` | Admin inicial, se crea si no existe ninguno |
-| `MAIL_HOST` / `MAIL_PORT` / `MAIL_USERNAME` / `MAIL_PASSWORD` / `MAIL_FROM` | SMTP para los códigos de restablecimiento de contraseña y los avisos de cambios en la cuenta por correo (opcional; el puerto por defecto es 587 con STARTTLS) |
+| `MAIL_HOST` / `MAIL_PORT` / `MAIL_USERNAME` / `MAIL_PASSWORD` / `MAIL_FROM` | SMTP para los códigos de restablecimiento de contraseña, los avisos de la cuenta (bienvenida, cambios de correo, celular, rol, estado y contraseña) y la copia por correo de los avisos de ventas, compras y cajas (opcional; el puerto por defecto es 587 con STARTTLS) |
+| `EMAIL_APP_URL` | Dirección del cliente web que abren los botones de los correos (por defecto `http://localhost:5173`; en `prod`, sin ella los correos salen sin botón) |
 | `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` / `TWILIO_FROM_NUMBER` | Twilio para los códigos de restablecimiento por SMS (opcional; número en E.164) |
 | `CLOUDINARY_CLOUD_NAME` / `CLOUDINARY_API_KEY` / `CLOUDINARY_API_SECRET` | Cloudinary para las imágenes de producto (obligatorio para subir imágenes en `prod`; en otros perfiles van a `uploads/images`) |
 | `IMAGES_BASE_URL` | URL pública de la carpeta local de imágenes (por defecto `http://localhost:8080/images`; no se usa con Cloudinary) |

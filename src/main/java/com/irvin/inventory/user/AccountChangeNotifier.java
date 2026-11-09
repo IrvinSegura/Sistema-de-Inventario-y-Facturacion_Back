@@ -1,57 +1,59 @@
 package com.irvin.inventory.user;
 
 import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
+import com.irvin.inventory.common.email.AccountEmails;
+import com.irvin.inventory.common.email.EmailMessage;
 import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionalEventListener;
 
-// Tells the owner when an admin changes their email or phone (both recover the password) or resets
-// their password, so a takeover doesn't go unnoticed. After commit and in the background, so a slow or
-// failing mail server never holds or undoes the change. Bilingual (Spanish first): users have no
-// language setting. New values are masked: the old address may be the compromised one.
+// Tells the owner about every change to their account: an admin creating it, changing its email, phone
+// (both recover the password), role or status, or resetting its password, and the owner's own password
+// changes, so a takeover doesn't go unnoticed. After commit and in the background, so a slow or
+// failing mail server never holds or undoes the change. New values are masked: the old address may be
+// the compromised one.
 @Slf4j
 @Component
 public class AccountChangeNotifier {
 
+    // Users have no language setting (the web keeps it in the browser); Spanish is the web's default.
+    private static final Locale NOTICE_LOCALE = Locale.of("es");
+
     private final List<AccountNoticeSender> senders;
+    private final AccountEmails emails;
     private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
 
-    public AccountChangeNotifier(List<AccountNoticeSender> senders) {
+    public AccountChangeNotifier(List<AccountNoticeSender> senders, AccountEmails emails) {
         this.senders = senders;
+        this.emails = emails;
     }
 
     @TransactionalEventListener
     public void onAccountChanged(AccountChangedEvent event) {
-        AccountNotice notice = switch (event.kind()) {
-            case EMAIL_CHANGED -> notice(event, "Cambió el correo de tu cuenta / Your account email changed",
-                    "Un administrador cambió el correo con el que inicias sesión a %s.".formatted(maskEmail(event.newValue())),
-                    "An admin changed the email you sign in with to %s.".formatted(maskEmail(event.newValue())));
-            case PHONE_CHANGED -> notice(event, "Cambió el celular de tu cuenta / Your account phone changed",
-                    "Un administrador cambió el celular de tu cuenta (para códigos por SMS) a %s."
-                            .formatted(maskPhone(event.newValue())),
-                    "An admin changed your account's phone (for SMS codes) to %s.".formatted(maskPhone(event.newValue())));
-            case PASSWORD_RESET -> notice(event, "Se restableció tu contraseña / Your password was reset",
-                    "Un administrador te puso una contraseña temporal; al entrar tendrás que elegir una nueva.",
-                    "An admin set you a temporary password; you'll choose a new one when signing in.");
-        };
-        executor.execute(() -> deliver(notice));
+        executor.execute(() -> deliver(event));
     }
 
-    private static AccountNotice notice(AccountChangedEvent event, String subject, String spanish, String english) {
-        String body = """
-                Hola, %1$s:
-
-                %2$s Si no esperabas este cambio, avisa al administrador de la tienda.
-
-                Hi %1$s,
-
-                %3$s If you didn't expect this, tell the store's admin.
-                """.formatted(event.name(), spanish, english);
-        return new AccountNotice(event.recipient(), subject, body);
+    private EmailMessage notice(AccountChangedEvent event) {
+        String to = event.recipient();
+        String name = event.name();
+        return switch (event.kind()) {
+            case EMAIL_CHANGED -> emails.emailChanged(to, name, maskEmail(event.newValue()), NOTICE_LOCALE);
+            case PHONE_CHANGED -> event.newValue() == null
+                    ? emails.phoneRemoved(to, name, NOTICE_LOCALE)
+                    : emails.phoneChanged(to, name, maskPhone(event.newValue()), NOTICE_LOCALE);
+            case PASSWORD_RESET -> emails.passwordReset(to, name, NOTICE_LOCALE);
+            case ACCOUNT_CREATED -> emails.accountCreated(to, name, event.newValue(), NOTICE_LOCALE);
+            case ROLE_CHANGED -> emails.roleChanged(to, name, event.newValue(), NOTICE_LOCALE);
+            case DEACTIVATED -> emails.accountDeactivated(to, name, NOTICE_LOCALE);
+            case REACTIVATED -> emails.accountReactivated(to, name, NOTICE_LOCALE);
+            case PASSWORD_CHANGED -> emails.passwordChanged(to, name, NOTICE_LOCALE);
+            case PASSWORD_RECOVERED -> emails.passwordRecovered(to, name, NOTICE_LOCALE);
+        };
     }
 
     // "jane@example.com" -> "j***@example.com".
@@ -60,17 +62,18 @@ public class AccountChangeNotifier {
         return at <= 0 ? "***" : email.charAt(0) + "***" + email.substring(at);
     }
 
-    // "+525512345678" -> "***5678"; "—" when the phone was removed.
+    // "+525512345678" -> "***5678".
     static String maskPhone(String phone) {
-        return phone == null ? "—" : "***" + phone.substring(Math.max(0, phone.length() - 4));
+        return "***" + phone.substring(Math.max(0, phone.length() - 4));
     }
 
-    private void deliver(AccountNotice notice) {
+    private void deliver(AccountChangedEvent event) {
         if (senders.isEmpty()) {
             log.warn("No email provider configured; an account change notice was not sent");
             return;
         }
         try {
+            EmailMessage notice = notice(event);
             senders.forEach(sender -> sender.send(notice));
         } catch (RuntimeException e) {
             log.error("Could not send an account change notice", e);
