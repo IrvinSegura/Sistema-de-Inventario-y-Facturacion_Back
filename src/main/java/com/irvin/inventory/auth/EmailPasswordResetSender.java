@@ -1,19 +1,19 @@
 package com.irvin.inventory.auth;
 
+import com.irvin.inventory.common.email.AccountEmails;
+import com.irvin.inventory.common.email.SmtpEmailSender;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
-import org.springframework.mail.SimpleMailMessage;
-import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.stereotype.Component;
 
-// Plain-text email over SMTP (spring.mail.*). Active only when an SMTP host is configured.
+// Emails the code in the language of the request. Active only when an SMTP host is configured.
 @Component
 @ConditionalOnExpression("!'${spring.mail.host:}'.isBlank()")
 @RequiredArgsConstructor
 public class EmailPasswordResetSender implements PasswordResetSender {
 
-    private final JavaMailSender mailSender;
-    private final PasswordResetProperties properties;
+    private final AccountEmails emails;
+    private final SmtpEmailSender emailSender;
 
     @Override
     public boolean supports(ResetChannel channel) {
@@ -22,11 +22,7 @@ public class EmailPasswordResetSender implements PasswordResetSender {
 
     @Override
     public void send(ResetMessage message) {
-        SimpleMailMessage mail = new SimpleMailMessage();
-        mail.setFrom(properties.mailFrom());
-        mail.setTo(message.email());
-        mail.setSubject(message.subject());
-        mail.setText(message.emailBody());
-        mailSender.send(mail);
+        emailSender.send(emails.resetCode(message.email(), message.name(), message.code(), message.ttl(),
+                message.locale()));
     }
 }

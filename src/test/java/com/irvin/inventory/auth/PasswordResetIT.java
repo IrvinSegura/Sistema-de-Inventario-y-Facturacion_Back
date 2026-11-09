@@ -25,7 +25,7 @@ class PasswordResetIT extends AbstractIntegrationTest {
         ResetMessage message = sender.next(seller.email());
         assertThat(message.channel()).isEqualTo(ResetChannel.EMAIL);
         assertThat(message.code()).matches("\\d{6}");
-        assertThat(message.subject()).contains("contraseña");
+        assertThat(message.locale().getLanguage()).isEqualTo("es");
 
         reset(seller.email(), message.code(), NEW_PASSWORD).andExpect(status().isNoContent());
 
